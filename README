@@ -1,0 +1,4 @@
+init command
+```bash
+pyinstaller --onefile --windowed --hidden-import=mido.backends.rtmidi --hidden-import=mido.backends.portmidi main.py
+```

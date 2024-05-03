@@ -1,23 +1,24 @@
 import sys
-import mido
-from mido import Message
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout
-from PyQt5.QtCore import QTimer, Qt, pyqtSignal, QObject
-from PyQt5.QtGui import QFont, QColor, QPalette
+from datetime import datetime
 
 import Quartz
+import mido
 from AppKit import NSApplication, NSApp
 from Foundation import NSObject, NSLog
-from datetime import datetime
+from PyQt5.QtCore import QTimer, Qt, pyqtSignal, QObject
+from PyQt5.QtGui import QFont, QColor, QPalette
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout
+from mido import Message
 
 class MidiManager:
     def __init__(self):
-        self.outport = mido.open_output(name='Virtual MIDI Keyboard', virtual=True)
+        self.outport = mido.open_output(name='K2', virtual=True)
 
-    def send_midi_message(self, note, velocity=64):
-        message = Message('note_on', note=note, velocity=velocity)
+    def send_cc_message(self, value):
+        message = Message('control_change', control=20, value=value)
         self.outport.send(message)
         return True
+
 
 class AlertManager(QObject):
     show_alert = pyqtSignal(str)
@@ -27,7 +28,7 @@ class AlertManager(QObject):
         self.app = QApplication(sys.argv)
         self.setup_alert_window()
         self.timer = QTimer()
-        self.timer.setInterval(3000)
+        self.timer.setInterval(1500)
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.window.hide)
 
@@ -43,7 +44,7 @@ class AlertManager(QObject):
         layout = QVBoxLayout()
         self.label = QLabel("Key Change:")
         self.label.setAlignment(Qt.AlignCenter)
-        self.label.setFont(QFont('Arial', 18))
+        self.label.setFont(QFont('Arial', 32))
         self.label.setStyleSheet("color: white;")
         layout.addWidget(self.label)
         self.window.setLayout(layout)
@@ -55,30 +56,34 @@ class AlertManager(QObject):
         self.window.show()
         self.timer.start()
 
+
 class AppDelegate(NSObject):
     def applicationDidFinishLaunching_(self, notification):
-        NSLog("Application did finish launching.")
+        NSLog("K2 launched.")
+
 
 def get_note_and_modifiers(key_code, modifiers, is_key_down):
-    # Mapa de notas musicales con nombres asignadas a keycodes
-    note_names = {
-        105: ('C3', 48),
-        106: ('Db3', 49),
-        64: ('D3', 50),
-        79: ('Eb3', 51),
-        80: ('E3', 52),
-        90: ('F3', 53),
+    # Mapeo de keycodes a valores CC y nombres de notas
+    note_cc_mapping = {
+        105: ('C', 1),
+        106: ('Db', 15),
+        64: ('D', 23),
+        79: ('Eb', 37),
+        80: ('E', 50),
+        90: ('F', 62),
     }
-    alt_note_names = {
-        105: ('Gb3', 54),
-        106: ('G3', 55),
-        64: ('Ab3', 56),
-        79: ('A3', 57),
-        80: ('Bb3', 58),
-        90: ('B3', 59),
+    alt_note_cc_mapping = {
+        105: ('F#', 72),
+        106: ('G', 82),
+        64: ('Ab', 91),
+        79: ('A', 105),
+        80: ('Bb', 115),
+        90: ('B', 127),
     }
-    note_tuple = alt_note_names.get(key_code, note_names.get(key_code, ('Unknown Note', None))) if 'Alt' in modifiers else note_names.get(key_code, ('Unknown Note', None))
+    note_tuple = alt_note_cc_mapping.get(key_code, note_cc_mapping.get(key_code, (
+        'Unknown Note', None))) if 'Alt' in modifiers else note_cc_mapping.get(key_code, ('Unknown Note', None))
     return note_tuple if is_key_down and note_tuple[1] is not None else None
+
 
 def key_event_callback(proxy, type_, event, refcon):
     key_code = Quartz.CGEventGetIntegerValueField(event, Quartz.kCGKeyboardEventKeycode)
@@ -103,10 +108,11 @@ def key_event_callback(proxy, type_, event, refcon):
     if note_tuple:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         print(f"Key pressed: {key_code} {note_tuple[0]} + {timestamp}")
-        if midi_manager.send_midi_message(note_tuple[1]):
+        if midi_manager.send_cc_message(note_tuple[1]):
             alert_manager.show_alert.emit(note_tuple[0])
 
     return event
+
 
 def main():
     global alert_manager, midi_manager
@@ -135,6 +141,7 @@ def main():
     Quartz.CGEventTapEnable(event_tap, True)
 
     NSApp().run()
+
 
 if __name__ == '__main__':
     main()
