@@ -1,138 +1,140 @@
-import json
 import sys
+import mido
+from mido import Message
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout
+from PyQt5.QtCore import QTimer, Qt, pyqtSignal, QObject
+from PyQt5.QtGui import QFont, QColor, QPalette
 
-from PyQt5.QtCore import QEvent, Qt
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-                             QLineEdit, QPushButton, QListWidget, QListWidgetItem,
-                             QMessageBox, QComboBox)
+import Quartz
+from AppKit import NSApplication, NSApp
+from Foundation import NSObject, NSLog
+from datetime import datetime
 
+class MidiManager:
+    def __init__(self):
+        self.outport = mido.open_output(name='Virtual MIDI Keyboard', virtual=True)
 
-class SongWidget(QWidget):
-    def __init__(self, song=None, key=None, parent=None):
-        super().__init__(parent)
-        self.initUI(song, key)
-        self.setupConnections()
+    def send_midi_message(self, note, velocity=64):
+        message = Message('note_on', note=note, velocity=velocity)
+        self.outport.send(message)
+        return True
 
-    def initUI(self, song, key):
-        layout = QHBoxLayout(self)
-        self.songEdit = QLineEdit(song if song else '')
-        self.songEdit.setPlaceholderText("Enter song title")
-        self.songEdit.setFixedSize(200, 30)
-        self.keySelect = QComboBox()
-        self.keySelect.addItems(["C", "D", "E", "F", "G", "A", "B"])
-        if key:
-            self.keySelect.setCurrentText(key)
-        else:
-            self.keySelect.setCurrentIndex(-1)
+class AlertManager(QObject):
+    show_alert = pyqtSignal(str)
 
-        self.deleteButton = QPushButton("x")
-        self.deleteButton.clicked.connect(self.removeSelf)
-
-        layout.addWidget(self.songEdit)
-        layout.addWidget(self.keySelect)
-        layout.addWidget(self.deleteButton)
-
-    def setupConnections(self):
-        self.songEdit.textChanged.connect(self.onDataChanged)
-        self.keySelect.currentIndexChanged.connect(self.onDataChanged)
-
-    def onDataChanged(self):
-        parentWidget = self.parent().parent()
-        if isinstance(parentWidget, MusicLibraryWidget):
-            parentWidget.saveSongs()
-
-    def removeSelf(self):
-        self.setParent(None)
-        self.deleteLater()
-
-
-class MusicLibraryWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.initUI()
-        self.loadSongs()
+        self.app = QApplication(sys.argv)
+        self.setup_alert_window()
+        self.timer = QTimer()
+        self.timer.setInterval(3000)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.window.hide)
 
-    def initUI(self):
-        self.setGeometry(100, 100, 600, 700)
-        self.setWindowTitle('Music Library')
-        mainLayout = QVBoxLayout(self)
+    def setup_alert_window(self):
+        self.window = QWidget()
+        self.window.setWindowTitle('Alerta de Cambio de Nota')
+        self.window.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
+        palette = QPalette()
+        palette.setColor(QPalette.Window, QColor(255, 0, 0))
+        self.window.setPalette(palette)
+        self.window.setAutoFillBackground(True)
+        self.window.resize(300, 150)
+        layout = QVBoxLayout()
+        self.label = QLabel("Key Change:")
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setFont(QFont('Arial', 18))
+        self.label.setStyleSheet("color: white;")
+        layout.addWidget(self.label)
+        self.window.setLayout(layout)
 
-        self.songList = QListWidget()
-        self.songList.setDragDropMode(QListWidget.InternalMove)
-        self.songList.installEventFilter(self)
-        self.songList.setStyleSheet(
-            "QListWidget::item:selected { background-color: #add8e6; }"
-            "QListWidget::item:selected:focus { background-color: #add8e6; }"
-        )
-        mainLayout.addWidget(self.songList)
-        self.addEntryRow()
+        self.show_alert.connect(self.show_message)
 
-    def addEntryRow(self):
-        songWidget = SongWidget()
-        listItem = QListWidgetItem(self.songList)
-        listItem.setSizeHint(songWidget.sizeHint())
-        self.songList.setItemWidget(listItem, songWidget)
-        listItem.setFlags(listItem.flags() & ~Qt.ItemIsDragEnabled)
-        songWidget.deleteButton.setText('+')
-        songWidget.deleteButton.clicked.disconnect()
-        songWidget.deleteButton.clicked.connect(lambda: self.addSong(songWidget))
-        songWidget.keySelect.setCurrentIndex(-1)
+    def show_message(self, message):
+        self.label.setText(f"Key Change: {message}")
+        self.window.show()
+        self.timer.start()
 
-    def addSong(self, songWidget):
-        song = songWidget.songEdit.text()
-        key = songWidget.keySelect.currentText()
-        if song and key:
-            self.addSongToUI(song, key)
-            songWidget.songEdit.clear()
-            songWidget.keySelect.setCurrentIndex(-1)
-            self.saveSongs()
-        else:
-            QMessageBox.warning(self, "Error", "Both song title and key must be filled.")
+class AppDelegate(NSObject):
+    def applicationDidFinishLaunching_(self, notification):
+        NSLog("Application did finish launching.")
 
-    def addSongToUI(self, song, key):
-        newSongWidget = SongWidget(song, key)
-        newListItem = QListWidgetItem(self.songList)
-        newListItem.setSizeHint(newSongWidget.sizeHint())
-        self.songList.setItemWidget(newListItem, newSongWidget)
+def get_note_and_modifiers(key_code, modifiers, is_key_down):
+    # Mapa de notas musicales con nombres asignadas a keycodes
+    note_names = {
+        105: ('C3', 48),
+        106: ('Db3', 49),
+        64: ('D3', 50),
+        79: ('Eb3', 51),
+        80: ('E3', 52),
+        90: ('F3', 53),
+    }
+    alt_note_names = {
+        105: ('Gb3', 54),
+        106: ('G3', 55),
+        64: ('Ab3', 56),
+        79: ('A3', 57),
+        80: ('Bb3', 58),
+        90: ('B3', 59),
+    }
+    note_tuple = alt_note_names.get(key_code, note_names.get(key_code, ('Unknown Note', None))) if 'Alt' in modifiers else note_names.get(key_code, ('Unknown Note', None))
+    return note_tuple if is_key_down and note_tuple[1] is not None else None
 
-    def saveSongs(self):
-        songs = []
-        for index in range(self.songList.count()):
-            widget = self.songList.itemWidget(self.songList.item(index))
-            song = widget.songEdit.text().strip()
-            key = widget.keySelect.currentText().strip()
-            if song and key:
-                songs.append({'index': index, 'song': song, 'key': key})
+def key_event_callback(proxy, type_, event, refcon):
+    key_code = Quartz.CGEventGetIntegerValueField(event, Quartz.kCGKeyboardEventKeycode)
+    is_key_down = type_ == Quartz.kCGEventKeyDown
 
-        with open('songs.json', 'w') as file:
-            json.dump(songs, file, indent=4)
+    if not is_key_down:
+        return event
 
-    def loadSongs(self):
-        try:
-            with open('songs.json', 'r') as file:
-                songs = json.load(file)
-            for song in sorted(songs, key=lambda x: x['index']):
-                self.addSongToUI(song['song'], song['key'])
-        except FileNotFoundError:
-            # El archivo no existe, por lo tanto, puede ser la primera vez que se ejecuta la aplicación.
-            print("No se encontró el archivo songs.json, se creará uno nuevo al guardar canciones.")
-        except json.JSONDecodeError:
-            # El archivo está vacío o mal formado, continuar sin cargar nada.
-            print("El archivo songs.json está vacío o mal formado, se ignorará.")
+    modifier_flags = Quartz.CGEventGetFlags(event)
+    modifiers = []
+    if modifier_flags & Quartz.kCGEventFlagMaskShift:
+        modifiers.append('Shift')
+    if modifier_flags & Quartz.kCGEventFlagMaskAlternate:
+        modifiers.append('Alt')
+    if modifier_flags & Quartz.kCGEventFlagMaskControl:
+        modifiers.append('Control')
+    if modifier_flags & Quartz.kCGEventFlagMaskCommand:
+        modifiers.append('Cmd')
 
-    def eventFilter(self, source, event):
-        if event.type() == QEvent.ChildAdded or event.type() == QEvent.ChildRemoved:
-            self.saveSongs()
-        elif event.type() == QEvent.ChildPolished:  # Puede indicar un reordenamiento
-            self.saveSongs()
-        return super().eventFilter(source, event)
+    note_tuple = get_note_and_modifiers(key_code, modifiers, is_key_down)
 
+    if note_tuple:
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        print(f"Key pressed: {key_code} {note_tuple[0]} + {timestamp}")
+        if midi_manager.send_midi_message(note_tuple[1]):
+            alert_manager.show_alert.emit(note_tuple[0])
 
-app = QApplication(sys.argv)
-font = QFont()
-font.setPixelSize(18)
-app.setFont(font)
-window = MusicLibraryWidget()
-window.show()
-sys.exit(app.exec_())
+    return event
+
+def main():
+    global alert_manager, midi_manager
+    alert_manager = AlertManager()
+    midi_manager = MidiManager()
+    app = NSApplication.sharedApplication()
+    delegate = AppDelegate.alloc().init()
+    NSApp().setDelegate_(delegate)
+    NSApp().finishLaunching()
+
+    event_mask = (Quartz.CGEventMaskBit(Quartz.kCGEventKeyDown) |
+                  Quartz.CGEventMaskBit(Quartz.kCGEventKeyUp))
+    event_tap = Quartz.CGEventTapCreate(Quartz.kCGSessionEventTap,
+                                        Quartz.kCGHeadInsertEventTap,
+                                        Quartz.kCGEventTapOptionDefault,
+                                        event_mask,
+                                        key_event_callback,
+                                        None)
+
+    if not event_tap:
+        print("Failed to create event tap")
+        exit(1)
+
+    run_loop_source = Quartz.CFMachPortCreateRunLoopSource(None, event_tap, 0)
+    Quartz.CFRunLoopAddSource(Quartz.CFRunLoopGetCurrent(), run_loop_source, Quartz.kCFRunLoopCommonModes)
+    Quartz.CGEventTapEnable(event_tap, True)
+
+    NSApp().run()
+
+if __name__ == '__main__':
+    main()
