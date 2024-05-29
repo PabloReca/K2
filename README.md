@@ -1,9 +1,9 @@
 
-# k2 Application
+# K2 Autotune Controller
 
 ## Description
 
-The k2 application is a Python-based tool that maps keyboard inputs to MIDI control change messages. It uses the `pynput` library to listen for keyboard events and `mido` to send MIDI messages. A Tkinter GUI is used to display notifications when keys are pressed.
+The K2 application is a Python-based tool that maps keyboard inputs to MIDI control change messages. It uses the `pynput` library to listen for keyboard events and `mido` to send MIDI messages. A Tkinter GUI is used to display notifications when keys are pressed.
 
 ## Features
 
@@ -75,4 +75,4 @@ This project is licensed under the MIT License. See the LICENSE file for more de
 
 ---
 
-This README provides a basic overview of the k2 application, its features, installation instructions, and usage guidelines. For further details, refer to the source code and configuration files.
+This README provides a basic overview of the K2 application, its features, installation instructions, and usage guidelines. For further details, refer to the source code and configuration files.
