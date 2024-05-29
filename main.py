@@ -1,57 +1,35 @@
 import tkinter as tk
 from pynput import keyboard
 import mido
+import yaml
 import threading
 import time
 
-# Mapeo de notas a mensajes CC
-note_cc_mapping = {
-    124: ('C', 1),  # Originalmente 105
-    127: ('Db', 15),  # Originalmente 106
-    128: ('D', 23),  # Originalmente 64
-    129: ('Eb', 37),  # Originalmente 79
-    130: ('E', 50),  # Originalmente 80
-    131: ('F', 62),  # Originalmente 90
-}
+# Cargar el mapeo desde el archivo YAML
+with open('note_cc_mapping.yml', 'r') as file:
+    config = yaml.safe_load(file)
+    note_cc_mapping = {int(k): (v.split(',')[0], int(v.split(',')[1])) for k, v in config['note_cc_mapping'].items()}
 
-alt_note_cc_mapping = {
-    124: ('F#', 72),  # Originalmente 105
-    127: ('G', 82),  # Originalmente 106
-    128: ('Ab', 91),  # Originalmente 64
-    129: ('A', 105),  # Originalmente 79
-    130: ('Bb', 115),  # Originalmente 80
-    131: ('B', 127),  # Originalmente 90
-}
-
-current_modifiers = set()
-
-# Listar puertos MIDI disponibles
-print("Puertos MIDI disponibles:")
-for port in mido.get_output_names():
-    print(port)
-
-# Configurar el puerto MIDI
 try:
     midi_out = mido.open_output('K2 1')
     print("Puerto MIDI abierto con éxito.")
 except IOError:
     print("Error al abrir el puerto MIDI. Asegúrate de que el nombre del puerto es correcto.")
 
+
 def send_midi_cc(value):
-    # Aseguramos que el mensaje se envía en el canal 1
-    cc_message = mido.Message('control_change', channel=0, control=20, value=value)  # Canal 0 es el canal 1 en MIDI
+    cc_message = mido.Message('control_change', channel=0, control=20, value=value)
     midi_out.send(cc_message)
     print(f"Mensaje MIDI enviado: CC {value}")
 
+
 def get_note_and_modifiers(key_code):
-    if 'Alt' in current_modifiers:
-        return alt_note_cc_mapping.get(key_code, ('Unknown Note', None))
-    else:
-        return note_cc_mapping.get(key_code, ('Unknown Note', None))
+    return note_cc_mapping.get(key_code, ('Unknown Note', None))
+
 
 def show_popup(note_name):
     popup = tk.Toplevel()
-    popup.overrideredirect(True)  # Sin bordes ni botones
+    popup.overrideredirect(True)
     popup.configure(bg='red')
 
     screen_width = popup.winfo_screenwidth()
@@ -70,10 +48,9 @@ def show_popup(note_name):
 
     popup.after(1000, popup.destroy)
 
+
 def on_press(key):
     try:
-        if key == keyboard.Key.alt_l or key == keyboard.Key.alt_r:
-            current_modifiers.add('Alt')
         key_code = key.vk if hasattr(key, 'vk') else key.value.vk
         note_tuple = get_note_and_modifiers(key_code)
         if note_tuple[1] is not None:
@@ -85,22 +62,19 @@ def on_press(key):
     except AttributeError:
         print(f'Special key pressed: {key}')
 
+
 def on_release(key):
-    if key == keyboard.Key.alt_l or key == keyboard.Key.alt_r:
-        current_modifiers.discard('Alt')
     if key == keyboard.Key.esc:
         return False
 
-# Configurar el listener del teclado
+
 listener = keyboard.Listener(
     on_press=on_press,
     on_release=on_release
 )
 listener.start()
 
-# Crear la ventana principal de Tkinter (oculta)
 root = tk.Tk()
-root.withdraw()  # Ocultar la ventana principal
+root.withdraw()
 
-# Ejecutar el bucle principal de Tkinter
 root.mainloop()
