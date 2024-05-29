@@ -1,3 +1,5 @@
+import os
+import sys
 import tkinter as tk
 from pynput import keyboard
 import mido
@@ -5,27 +7,35 @@ import yaml
 import threading
 import time
 
+# Obtener el directorio del script
+if getattr(sys, 'frozen', False):
+    base_path = os.path.dirname(sys.executable)
+else:
+    base_path = os.path.dirname(os.path.abspath(__file__))
+yaml_path = os.path.join(base_path, 'note_cc_mapping.yml')
+
 # Cargar el mapeo desde el archivo YAML
-with open('note_cc_mapping.yml', 'r') as file:
+with open(yaml_path, 'r') as file:
     config = yaml.safe_load(file)
     note_cc_mapping = {int(k): (v.split(',')[0], int(v.split(',')[1])) for k, v in config['note_cc_mapping'].items()}
 
 try:
+    # Asegúrate de que el backend rtmidi esté disponible
+    mido.set_backend('mido.backends.rtmidi')
     midi_out = mido.open_output('K2 1')
     print("Puerto MIDI abierto con éxito.")
 except IOError:
     print("Error al abrir el puerto MIDI. Asegúrate de que el nombre del puerto es correcto.")
-
+except ImportError:
+    print("Error al importar el backend rtmidi. Asegúrate de que python-rtmidi está instalado.")
 
 def send_midi_cc(value):
     cc_message = mido.Message('control_change', channel=0, control=20, value=value)
     midi_out.send(cc_message)
     print(f"Mensaje MIDI enviado: CC {value}")
 
-
 def get_note_and_modifiers(key_code):
     return note_cc_mapping.get(key_code, ('Unknown Note', None))
-
 
 def show_popup(note_name):
     popup = tk.Toplevel()
@@ -48,7 +58,6 @@ def show_popup(note_name):
 
     popup.after(1000, popup.destroy)
 
-
 def on_press(key):
     try:
         key_code = key.vk if hasattr(key, 'vk') else key.value.vk
@@ -62,11 +71,9 @@ def on_press(key):
     except AttributeError:
         print(f'Special key pressed: {key}')
 
-
 def on_release(key):
     if key == keyboard.Key.esc:
         return False
-
 
 listener = keyboard.Listener(
     on_press=on_press,
